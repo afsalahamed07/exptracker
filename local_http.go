@@ -2,7 +2,6 @@ package main
 
 import (
 	"io"
-	"log"
 	"net/http"
 	"os"
 
@@ -16,13 +15,14 @@ func runLocalHTTP(h *handler) error {
 	}
 
 	addr := ":" + port
-	log.Printf("starting local HTTP server on http://localhost%s", addr)
+	h.logger.Infof("starting local HTTP server on http://localhost%s", addr)
 	return http.ListenAndServe(addr, http.HandlerFunc(h.serveHTTP))
 }
 
 func (h *handler) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
+		h.logger.Errorf("failed to read local request body: %v", err)
 		http.Error(w, "failed to read request body", http.StatusInternalServerError)
 		return
 	}
@@ -39,6 +39,7 @@ func (h *handler) serveHTTP(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.handle(r.Context(), req)
 	if err != nil {
+		h.logger.Errorf("handler returned error in local HTTP mode: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}

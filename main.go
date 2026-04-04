@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -21,11 +20,13 @@ import (
 func main() {
 	h, err := newHandler()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 	if os.Getenv("LOCAL_HTTP") == "1" {
 		if err := runLocalHTTP(h); err != nil {
-			log.Fatal(err)
+			h.logger.Errorf("local HTTP server stopped: %v", err)
+			os.Exit(1)
 		}
 		return
 	}
@@ -86,6 +87,8 @@ func newHandler() (*handler, error) {
 		}
 	}
 
+	logger := newLogger(os.Getenv("LOG_LEVEL"))
+
 	return &handler{
 		config:        cfg,
 		bankMatchers:  bankMatchers,
@@ -93,37 +96,45 @@ func newHandler() (*handler, error) {
 		spreadsheetID: spreadsheetID,
 		authToken:     authToken,
 		location:      loc,
+		logger:        logger,
 	}, nil
 }
 
 func (h *handler) handle(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	h.logger.Debugf("received request: method=%s headers=%v body=%s", req.RequestContext.HTTP.Method, maskedHeaders(req.Headers), req.Body)
 	if req.RequestContext.HTTP.Method != http.MethodPost {
+		h.logger.Warnf("request rejected: method=%s", req.RequestContext.HTTP.Method)
 		return jsonResponse(http.StatusMethodNotAllowed, "method not allowed"), nil
 	}
 
 	if err := h.validateAuth(req.Headers); err != nil {
+		h.logger.Warnf("request unauthorized: %v", err)
 		return jsonResponse(http.StatusUnauthorized, "unauthorized"), nil
 	}
 
 	payload, err := parsePayload(req, h.location)
 	if err != nil {
+		h.logger.Warnf("invalid payload: %v", err)
 		return jsonResponse(http.StatusBadRequest, err.Error()), nil
 	}
 
 	matcher, err := h.matcherForSender(payload.Sender)
 	if err != nil {
+		h.logger.Warnf("sender rejected: sender=%q err=%v", payload.Sender, err)
 		return jsonResponse(http.StatusForbidden, "sender not allowed"), nil
 	}
 
 	parsed, err := h.parseSMS(payload, matcher)
 	if err != nil {
+		h.logger.Warnf("sms parse failed: sender=%q bank=%q err=%v", payload.Sender, matcher.name, err)
 		return jsonResponse(http.StatusBadRequest, err.Error()), nil
 	}
 
 	if err := h.appendToSheet(ctx, parsed); err != nil {
-		log.Printf("append failure: %v", err)
+		h.logger.Errorf("append failed: sender=%q bank=%q err=%v", parsed.Sender, parsed.BankName, err)
 		return jsonResponse(http.StatusInternalServerError, "failed to append to sheet"), nil
 	}
+	h.logger.Infof("transaction appended: sender=%q bank=%q amount=%s currency=%s merchant=%q", parsed.Sender, parsed.BankName, parsed.Amount, parsed.Currency, parsed.Merchant)
 
 	return jsonResponse(http.StatusOK, "ok"), nil
 }
@@ -181,6 +192,18 @@ func headerValue(headers map[string]string, key string) string {
 		}
 	}
 	return ""
+}
+
+func maskedHeaders(headers map[string]string) map[string]string {
+	masked := make(map[string]string, len(headers))
+	for key, value := range headers {
+		if strings.EqualFold(key, "x-auth-token") {
+			masked[key] = "[redacted]"
+			continue
+		}
+		masked[key] = value
+	}
+	return masked
 }
 
 func spreadsheetIDFromURL(url string) (string, error) {

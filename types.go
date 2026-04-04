@@ -35,6 +35,7 @@ type handler struct {
 	spreadsheetID string
 	authToken     string
 	location      *time.Location
+	logger        appLogger
 }
 
 type bankMatcher struct {
