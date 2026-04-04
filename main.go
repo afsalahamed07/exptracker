@@ -147,9 +147,7 @@ func (h *handler) appendToSheet(_ context.Context, tx ParsedTransaction) error {
 		tx.Merchant,
 		tx.Balance,
 		tx.AccountMask,
-		tx.RawMessage,
 		tx.Sender,
-		tx.BalanceCurrency,
 		tx.BankName,
 		tx.DeviceID,
 	}
