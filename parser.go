@@ -69,58 +69,45 @@ func (h *handler) matcherForSender(sender string) (bankMatcher, error) {
 }
 
 func (h *handler) parseSMS(payload SMSPayload, matcher bankMatcher) (ParsedTransaction, error) {
-	match := matcher.messageRegex.FindStringSubmatch(payload.Message)
-	if len(match) == 0 {
-		return ParsedTransaction{}, fmt.Errorf("message did not match bank pattern for %s", matcher.name)
+	for _, message := range matcher.messages {
+		match := message.regex.FindStringSubmatch(payload.Message)
+		if len(match) == 0 {
+			continue
+		}
+
+		parts := mapSubexp(message.regex, match)
+		amount, err := requiredField("amount", normalizeNumber(parts["amount"]))
+		if err != nil {
+			return ParsedTransaction{}, err
+		}
+
+		accountMask, err := requiredField("account", strings.TrimSpace(parts["account"]))
+		if err != nil {
+			return ParsedTransaction{}, err
+		}
+
+		description := normalizeWhitespace(parts["description"])
+		if description == "" {
+			description = normalizeWhitespace(parts["merchant"])
+		}
+		description, err = requiredField("description", description)
+		if err != nil {
+			return ParsedTransaction{}, err
+		}
+
+		return ParsedTransaction{
+			Sender:      payload.Sender,
+			ReceivedAt:  payload.ReceivedAt,
+			DeviceID:    payload.DeviceID,
+			Description: description,
+			AccountMask: accountMask,
+			Amount:      amount,
+			Direction:   message.direction,
+			BankName:    matcher.name,
+		}, nil
 	}
 
-	parts := mapSubexp(matcher.messageRegex, match)
-	amount, err := requiredField("amount", normalizeNumber(parts["amount"]))
-	if err != nil {
-		return ParsedTransaction{}, err
-	}
-
-	balance, err := requiredField("balance", normalizeNumber(parts["balance"]))
-	if err != nil {
-		return ParsedTransaction{}, err
-	}
-
-	merchant, err := requiredField("merchant", normalizeWhitespace(parts["merchant"]))
-	if err != nil {
-		return ParsedTransaction{}, err
-	}
-
-	accountMask, err := requiredField("account", strings.TrimSpace(parts["account"]))
-	if err != nil {
-		return ParsedTransaction{}, err
-	}
-
-	currency := strings.TrimSpace(parts["currency"])
-	if currency == "" {
-		currency = strings.TrimSpace(parts["balance_currency"])
-	}
-	if currency == "" {
-		return ParsedTransaction{}, errors.New("currency not found")
-	}
-
-	balanceCurrency := strings.TrimSpace(parts["balance_currency"])
-	if balanceCurrency == "" {
-		balanceCurrency = currency
-	}
-
-	return ParsedTransaction{
-		Sender:          payload.Sender,
-		RawMessage:      payload.Message,
-		ReceivedAt:      payload.ReceivedAt,
-		DeviceID:        payload.DeviceID,
-		Merchant:        merchant,
-		AccountMask:     accountMask,
-		Currency:        currency,
-		Amount:          amount,
-		Balance:         balance,
-		BalanceCurrency: balanceCurrency,
-		BankName:        matcher.name,
-	}, nil
+	return ParsedTransaction{}, fmt.Errorf("message did not match any pattern for %s", matcher.name)
 }
 
 func mapSubexp(re *regexp.Regexp, match []string) map[string]string {

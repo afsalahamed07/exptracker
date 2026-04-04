@@ -64,20 +64,28 @@ func TestCompileBankMatchersRejectsMissingNamedGroups(t *testing.T) {
 	_, err := compileBankMatchers([]BankConfig{{
 		Name:    "broken",
 		Senders: []string{`^NationsSMS$`},
-		Pattern: `^A TRANSACTION of (?P<currency>[A-Z]{3}) (?P<amount>[0-9,]+\.[0-9]{2}) at (?P<merchant>.+)$`,
+		Patterns: []MessagePatternConfig{{
+			Name:      "purchase",
+			Direction: "debit",
+			Pattern:   `^A TRANSACTION of LKR (?P<amount>[0-9,]+\.[0-9]{2}) at (?P<merchant>.+)$`,
+		}},
 	}})
 	if err == nil {
 		t.Fatal("compileBankMatchers() error = nil, want missing-group error")
 	}
 }
 
-func TestCompileBankMatchersAcceptsCurrencyFallbackGroup(t *testing.T) {
+func TestCompileBankMatchersAcceptsDescriptionGroup(t *testing.T) {
 	t.Parallel()
 
 	_, err := compileBankMatchers([]BankConfig{{
 		Name:    "nations",
 		Senders: []string{`^NationsSMS$`},
-		Pattern: `^A TRANSACTION of (?P<amount>[0-9,]+\.[0-9]{2}) was approved on your A/C No\. (?P<account>[0-9*]+) at (?P<merchant>.+?)\. Current Bal (?P<balance_currency>[A-Z]{3}) (?P<balance>[0-9,]+\.[0-9]{2})$`,
+		Patterns: []MessagePatternConfig{{
+			Name:      "purchase",
+			Direction: "debit",
+			Pattern:   `^A TRANSACTION of LKR (?P<amount>[0-9,]+\.[0-9]{2}) was approved on your A/C No\. (?P<account>[0-9*]+) at (?P<description>.+?)\. Current Bal LKR [0-9,]+\.[0-9]{2}$`,
+		}},
 	}})
 	if err != nil {
 		t.Fatalf("compileBankMatchers() error = %v", err)
@@ -96,13 +104,13 @@ func TestSpreadsheetIDFromURL(t *testing.T) {
 	}
 }
 
-func TestValidateBankPatternRequiresCurrencyGroup(t *testing.T) {
+func TestValidateMessagePatternRequiresDescriptionOrMerchantGroup(t *testing.T) {
 	t.Parallel()
 
-	re := regexp.MustCompile(`^(?P<amount>[0-9,]+\.[0-9]{2}) (?P<merchant>.+) (?P<account>[0-9*]+) (?P<balance>[0-9,]+\.[0-9]{2})$`)
-	err := validateBankPattern(re, "broken")
+	re := regexp.MustCompile(`^(?P<amount>[0-9,]+\.[0-9]{2}) (?P<account>[0-9*]+)$`)
+	err := validateMessagePattern(re, "broken-bank", "broken-pattern")
 	if err == nil {
-		t.Fatal("validateBankPattern() error = nil, want currency-group error")
+		t.Fatal("validateMessagePattern() error = nil, want description-group error")
 	}
 }
 
@@ -126,7 +134,7 @@ func TestHandleReturnsServerErrorWhenAppendFails(t *testing.T) {
 	sheets := &fakeSheetStore{appendErr: errors.New("append failed")}
 	h := testHandler(t, sheets)
 
-	resp, err := h.handle(context.Background(), testRequest())
+	resp, err := h.handle(context.Background(), testPurchaseRequest())
 	if err != nil {
 		t.Fatalf("handle() error = %v", err)
 	}
@@ -135,13 +143,13 @@ func TestHandleReturnsServerErrorWhenAppendFails(t *testing.T) {
 	}
 }
 
-func TestHandleAppendsRowWhenRequestIsValid(t *testing.T) {
+func TestHandleAppendsRowWhenPurchaseIsValid(t *testing.T) {
 	t.Parallel()
 
 	sheets := &fakeSheetStore{}
 	h := testHandler(t, sheets)
 
-	resp, err := h.handle(context.Background(), testRequest())
+	resp, err := h.handle(context.Background(), testPurchaseRequest())
 	if err != nil {
 		t.Fatalf("handle() error = %v", err)
 	}
@@ -151,8 +159,35 @@ func TestHandleAppendsRowWhenRequestIsValid(t *testing.T) {
 	if len(sheets.appendedRows) != 1 {
 		t.Fatalf("Append calls = %d, want 1", len(sheets.appendedRows))
 	}
-	if len(sheets.appendedRows[0]) != 11 {
-		t.Fatalf("Appended row columns = %d, want 11", len(sheets.appendedRows[0]))
+	if len(sheets.appendedRows[0]) != 8 {
+		t.Fatalf("Appended row columns = %d, want 8", len(sheets.appendedRows[0]))
+	}
+	if got := sheets.appendedRows[0][2]; got != "debit" {
+		t.Fatalf("Direction = %v, want debit", got)
+	}
+	if got := sheets.appendedRows[0][3]; got != "UBER EATS CBH" {
+		t.Fatalf("Description = %v, want UBER EATS CBH", got)
+	}
+}
+
+func TestHandleAppendsRowWhenCreditMessageIsValid(t *testing.T) {
+	t.Parallel()
+
+	sheets := &fakeSheetStore{}
+	h := testHandler(t, sheets)
+
+	resp, err := h.handle(context.Background(), testCreditRequest())
+	if err != nil {
+		t.Fatalf("handle() error = %v", err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf("StatusCode = %d, want 200", resp.StatusCode)
+	}
+	if got := sheets.appendedRows[0][2]; got != "credit" {
+		t.Fatalf("Direction = %v, want credit", got)
+	}
+	if got := sheets.appendedRows[0][3]; got != "ISLIPS" {
+		t.Fatalf("Description = %v, want ISLIPS", got)
 	}
 }
 
@@ -174,7 +209,7 @@ func TestServeHTTPReturnsUnauthorizedWithoutToken(t *testing.T) {
 	t.Parallel()
 
 	h := testHandler(t, &fakeSheetStore{})
-	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(testRequest().Body))
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(testPurchaseRequest().Body))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 
@@ -190,7 +225,7 @@ func TestServeHTTPAppendsRowWhenRequestIsValid(t *testing.T) {
 
 	sheets := &fakeSheetStore{}
 	h := testHandler(t, sheets)
-	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(testRequest().Body))
+	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(testPurchaseRequest().Body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-auth-token", "secret")
 	resp := httptest.NewRecorder()
@@ -211,7 +246,18 @@ func testHandler(t *testing.T, sheets *fakeSheetStore) *handler {
 	bankMatchers, err := compileBankMatchers([]BankConfig{{
 		Name:    "nations",
 		Senders: []string{`^NationsSMS$`},
-		Pattern: `^A TRANSACTION of (?P<currency>[A-Z]{3}) (?P<amount>[0-9,]+\.[0-9]{2}) was approved on your A/C No\. (?P<account>[0-9*]+) at (?P<merchant>.+?)\. Current Bal (?P<balance_currency>[A-Z]{3}) (?P<balance>[0-9,]+\.[0-9]{2})$`,
+		Patterns: []MessagePatternConfig{
+			{
+				Name:      "purchase",
+				Direction: "debit",
+				Pattern:   `^A TRANSACTION of LKR (?P<amount>[0-9,]+\.[0-9]{2}) was approved on your A/C No\. (?P<account>[0-9*]+) at (?P<description>.+?)\. Current Bal LKR [0-9,]+\.[0-9]{2}$`,
+			},
+			{
+				Name:      "islips",
+				Direction: "credit",
+				Pattern:   `^\s*(?P<description>ISLIPS)\s+was performed on your Account No\. (?P<account>[0-9A-Za-zXx*]+) for LKR (?P<amount>[0-9,]+\.[0-9]{2}) CR\.?` + `$`,
+			},
+		},
 	}})
 	if err != nil {
 		t.Fatalf("compileBankMatchers() error = %v", err)
@@ -228,14 +274,34 @@ func testHandler(t *testing.T, sheets *fakeSheetStore) *handler {
 		spreadsheetID: "sheet-id",
 		authToken:     "secret",
 		location:      time.UTC,
+		logger:        newLogger("error"),
 	}
 }
 
-func testRequest() events.APIGatewayV2HTTPRequest {
+func testPurchaseRequest() events.APIGatewayV2HTTPRequest {
 	return events.APIGatewayV2HTTPRequest{
 		Body: `{
 			"sender":"NationsSMS",
 			"message":"A TRANSACTION of LKR 1,185.94 was approved on your A/C No. 200680****580 at UBER EATS      CBH. Current Bal LKR 95200.23",
+			"received_at":"2026-02-04T12:34:56Z",
+			"device_id":"pixel-8"
+		}`,
+		Headers: map[string]string{
+			"x-auth-token": "secret",
+		},
+		RequestContext: events.APIGatewayV2HTTPRequestContext{
+			HTTP: events.APIGatewayV2HTTPRequestContextHTTPDescription{
+				Method: "POST",
+			},
+		},
+	}
+}
+
+func testCreditRequest() events.APIGatewayV2HTTPRequest {
+	return events.APIGatewayV2HTTPRequest{
+		Body: `{
+			"sender":"NationsSMS",
+			"message":" ISLIPS  was performed on your Account No. 200XXXXX9580 for LKR 174825.38 CR.",
 			"received_at":"2026-02-04T12:34:56Z",
 			"device_id":"pixel-8"
 		}`,

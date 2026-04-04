@@ -11,8 +11,7 @@ import (
 )
 
 var (
-	requiredBankPatternGroups = []string{"amount", "merchant", "account", "balance"}
-	currencyBankPatternGroups = []string{"currency", "balance_currency"}
+	requiredMessagePatternGroups = []string{"amount", "account"}
 )
 
 type Config struct {
@@ -27,9 +26,15 @@ type SpreadsheetConfig struct {
 }
 
 type BankConfig struct {
-	Name    string   `yaml:"name"`
-	Senders []string `yaml:"senders"`
-	Pattern string   `yaml:"pattern"`
+	Name     string                 `yaml:"name"`
+	Senders  []string               `yaml:"senders"`
+	Patterns []MessagePatternConfig `yaml:"patterns"`
+}
+
+type MessagePatternConfig struct {
+	Name      string `yaml:"name"`
+	Direction string `yaml:"direction"`
+	Pattern   string `yaml:"pattern"`
 }
 
 func loadConfig(path string) (Config, error) {
@@ -81,26 +86,52 @@ func compileBankMatchers(banks []BankConfig) ([]bankMatcher, error) {
 			return nil, fmt.Errorf("bank %q must include at least one sender pattern", name)
 		}
 
-		if strings.TrimSpace(bank.Pattern) == "" {
-			return nil, errors.New("bank pattern cannot be empty")
+		if len(bank.Patterns) == 0 {
+			return nil, fmt.Errorf("bank %q must include at least one message pattern", name)
 		}
-		re, err := regexp.Compile(bank.Pattern)
-		if err != nil {
-			return nil, fmt.Errorf("invalid bank pattern %q: %w", name, err)
+
+		messageMatchers := make([]messageMatcher, 0, len(bank.Patterns))
+		for _, pattern := range bank.Patterns {
+			patternName := strings.TrimSpace(pattern.Name)
+			if patternName == "" {
+				return nil, fmt.Errorf("bank %q has a message pattern with empty name", name)
+			}
+
+			direction := strings.ToLower(strings.TrimSpace(pattern.Direction))
+			if direction != "credit" && direction != "debit" {
+				return nil, fmt.Errorf("bank %q pattern %q must use direction credit or debit", name, patternName)
+			}
+
+			patternValue := strings.TrimSpace(pattern.Pattern)
+			if patternValue == "" {
+				return nil, fmt.Errorf("bank %q pattern %q cannot be empty", name, patternName)
+			}
+
+			re, err := regexp.Compile(patternValue)
+			if err != nil {
+				return nil, fmt.Errorf("invalid bank pattern %q for bank %q: %w", patternName, name, err)
+			}
+			if err := validateMessagePattern(re, name, patternName); err != nil {
+				return nil, err
+			}
+
+			messageMatchers = append(messageMatchers, messageMatcher{
+				name:      patternName,
+				direction: direction,
+				regex:     re,
+			})
 		}
-		if err := validateBankPattern(re, name); err != nil {
-			return nil, err
-		}
+
 		matchers = append(matchers, bankMatcher{
-			name:         name,
-			senderRegex:  senderMatchers,
-			messageRegex: re,
+			name:        name,
+			senderRegex: senderMatchers,
+			messages:    messageMatchers,
 		})
 	}
 	return matchers, nil
 }
 
-func validateBankPattern(re *regexp.Regexp, name string) error {
+func validateMessagePattern(re *regexp.Regexp, bankName, patternName string) error {
 	groups := make(map[string]struct{})
 	for _, group := range re.SubexpNames() {
 		if group != "" {
@@ -108,21 +139,22 @@ func validateBankPattern(re *regexp.Regexp, name string) error {
 		}
 	}
 
-	missing := make([]string, 0, len(requiredBankPatternGroups))
-	for _, group := range requiredBankPatternGroups {
+	missing := make([]string, 0, len(requiredMessagePatternGroups))
+	for _, group := range requiredMessagePatternGroups {
 		if _, ok := groups[group]; !ok {
 			missing = append(missing, group)
 		}
 	}
 	if len(missing) > 0 {
-		return fmt.Errorf("bank pattern %q missing named groups: %s", name, strings.Join(missing, ", "))
+		return fmt.Errorf("bank %q pattern %q missing named groups: %s", bankName, patternName, strings.Join(missing, ", "))
 	}
 
-	for _, group := range currencyBankPatternGroups {
-		if _, ok := groups[group]; ok {
-			return nil
-		}
+	if _, ok := groups["description"]; ok {
+		return nil
+	}
+	if _, ok := groups["merchant"]; ok {
+		return nil
 	}
 
-	return fmt.Errorf("bank pattern %q must include at least one named group: %s", name, strings.Join(currencyBankPatternGroups, " or "))
+	return fmt.Errorf("bank %q pattern %q must include one named group: description or merchant", bankName, patternName)
 }

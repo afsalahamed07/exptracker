@@ -134,7 +134,7 @@ func (h *handler) handle(ctx context.Context, req events.APIGatewayV2HTTPRequest
 		h.logger.Errorf("append failed: sender=%q bank=%q err=%v", parsed.Sender, parsed.BankName, err)
 		return jsonResponse(http.StatusInternalServerError, "failed to append to sheet"), nil
 	}
-	h.logger.Infof("transaction appended: sender=%q bank=%q amount=%s currency=%s merchant=%q", parsed.Sender, parsed.BankName, parsed.Amount, parsed.Currency, parsed.Merchant)
+	h.logger.Debugf("transaction appended: sender=%q bank=%q amount=%s direction=%s description=%q", parsed.Sender, parsed.BankName, parsed.Amount, parsed.Direction, parsed.Description)
 
 	return jsonResponse(http.StatusOK, "ok"), nil
 }
@@ -154,13 +154,12 @@ func (h *handler) appendToSheet(_ context.Context, tx ParsedTransaction) error {
 	row := []interface{}{
 		tx.ReceivedAt,
 		tx.Amount,
-		tx.Currency,
-		tx.Merchant,
-		tx.Balance,
+		tx.Direction,
+		tx.Description,
 		tx.AccountMask,
 		tx.Sender,
-		tx.BankName,
 		tx.DeviceID,
+		tx.BankName,
 	}
 
 	err := h.sheets.AppendRow(h.spreadsheetID, h.config.Spreadsheet.SheetName, row)

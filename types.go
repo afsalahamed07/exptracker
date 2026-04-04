@@ -15,17 +15,14 @@ type SMSPayload struct {
 }
 
 type ParsedTransaction struct {
-	Sender          string
-	RawMessage      string
-	ReceivedAt      string
-	DeviceID        string
-	Merchant        string
-	AccountMask     string
-	Currency        string
-	Amount          string
-	Balance         string
-	BalanceCurrency string
-	BankName        string
+	Sender      string
+	ReceivedAt  string
+	DeviceID    string
+	Description string
+	AccountMask string
+	Amount      string
+	Direction   string
+	BankName    string
 }
 
 type handler struct {
@@ -39,9 +36,15 @@ type handler struct {
 }
 
 type bankMatcher struct {
-	name         string
-	senderRegex  []*regexp.Regexp
-	messageRegex *regexp.Regexp
+	name        string
+	senderRegex []*regexp.Regexp
+	messages    []messageMatcher
+}
+
+type messageMatcher struct {
+	name      string
+	direction string
+	regex     *regexp.Regexp
 }
 
 type sheetStore interface {

@@ -8,7 +8,7 @@ This project is a Go AWS Lambda that receives bank transaction SMS payloads over
 2. Validates `x-auth-token` against the `AUTH_TOKEN` environment variable
 3. Parses the JSON request body
 4. Resolves the bank config from the SMS sender
-5. Parses the SMS message using that bank's regex pattern
+5. Tries that bank's configured message patterns until one matches
 6. Appends the parsed transaction to the configured Google Sheet
 
 ## Request Body
@@ -36,10 +36,16 @@ spreadsheet:
   sheet_name: Transactions
 
 banks:
-  - name: "nations"
+  - name: "NTB"
     senders:
       - "^NationsSMS$"
-    pattern: "^A TRANSACTION of ...$"
+    patterns:
+      - name: "card_purchase"
+        direction: "debit"
+        pattern: "^A TRANSACTION of LKR ...$"
+      - name: "islips"
+        direction: "credit"
+        pattern: "^ISLIPS ...$"
 
 timezone: "UTC"
 ```
@@ -48,7 +54,13 @@ Each bank entry contains:
 
 - `name`: bank name written to the sheet
 - `senders`: one or more sender regex patterns
-- `pattern`: regex used to parse that bank's SMS format
+- `patterns`: one or more message patterns for that bank
+
+Each message pattern contains:
+
+- `name`: pattern name for readability
+- `direction`: `credit` or `debit`
+- `pattern`: regex used to parse that SMS format
 
 ## Environment Variables
 
@@ -62,15 +74,12 @@ Rows are appended to Google Sheets in this order:
 
 1. `received_at`
 2. `amount`
-3. `currency`
-4. `merchant`
-5. `balance`
-6. `account_mask`
-7. `raw_message`
-8. `sender`
-9. `balance_currency`
-10. `bank_name`
-11. `device_id`
+3. `direction`
+4. `description`
+5. `account_mask`
+6. `sender`
+7. `device_id`
+8. `bank_name`
 
 ## Local Commands
 
