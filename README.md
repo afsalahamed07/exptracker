@@ -85,3 +85,33 @@ make package
 `make build` creates `dist/lambda/bootstrap`.
 
 `make package` creates `dist/lambda/function.zip`.
+
+## Local HTTP Testing
+
+Run the app as a normal local HTTP server:
+
+```sh
+LOCAL_HTTP=1 go run .
+```
+
+Default local URL:
+
+```text
+http://localhost:8080/
+```
+
+You can override the port with `PORT`.
+
+Example:
+
+```sh
+curl -X POST http://localhost:8080/ \
+  -H 'Content-Type: application/json' \
+  -H 'x-auth-token: your-auth-token' \
+  -d '{
+    "sender":"NationsSMS",
+    "message":"A TRANSACTION of LKR 1,185.94 was approved on your A/C No. 200680****580 at UBER EATS CBH. Current Bal LKR 95200.23",
+    "received_at":"2026-02-04T12:34:56Z",
+    "device_id":"pixel-8"
+  }'
+```

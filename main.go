@@ -23,6 +23,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if os.Getenv("LOCAL_HTTP") == "1" {
+		if err := runLocalHTTP(h); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	lambda.Start(h.handle)
 }
 
