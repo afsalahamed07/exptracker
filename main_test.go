@@ -170,6 +170,30 @@ func TestHandleAppendsRowWhenPurchaseIsValid(t *testing.T) {
 	}
 }
 
+func TestHandleAppendsRowWhenPosReversalIsValid(t *testing.T) {
+	t.Parallel()
+
+	sheets := &fakeSheetStore{}
+	h := testHandler(t, sheets)
+
+	resp, err := h.handle(context.Background(), testPosReversalRequest())
+	if err != nil {
+		t.Fatalf("handle() error = %v", err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf("StatusCode = %d, want 200", resp.StatusCode)
+	}
+	if got := sheets.appendedRows[0][1]; got != "298.15" {
+		t.Fatalf("Amount = %v, want 298.15", got)
+	}
+	if got := sheets.appendedRows[0][2]; got != "credit" {
+		t.Fatalf("Direction = %v, want credit", got)
+	}
+	if got := sheets.appendedRows[0][3]; got != "POS Reversal Transaction - UBER _" {
+		t.Fatalf("Description = %v, want POS Reversal Transaction - UBER _", got)
+	}
+}
+
 func TestHandleAppendsRowWhenCreditMessageIsValid(t *testing.T) {
 	t.Parallel()
 
@@ -188,6 +212,30 @@ func TestHandleAppendsRowWhenCreditMessageIsValid(t *testing.T) {
 	}
 	if got := sheets.appendedRows[0][3]; got != "ISLIPS" {
 		t.Fatalf("Description = %v, want ISLIPS", got)
+	}
+}
+
+func TestHandleAppendsRowWhenCreditCeftsMessageIsValid(t *testing.T) {
+	t.Parallel()
+
+	sheets := &fakeSheetStore{}
+	h := testHandler(t, sheets)
+
+	resp, err := h.handle(context.Background(), testCreditCeftsRequest())
+	if err != nil {
+		t.Fatalf("handle() error = %v", err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf("StatusCode = %d, want 200", resp.StatusCode)
+	}
+	if got := sheets.appendedRows[0][1]; got != "20000.00" {
+		t.Fatalf("Amount = %v, want 20000.00", got)
+	}
+	if got := sheets.appendedRows[0][2]; got != "credit" {
+		t.Fatalf("Direction = %v, want credit", got)
+	}
+	if got := sheets.appendedRows[0][3]; got != "ONLINE FUND TRF VIA CEFTS" {
+		t.Fatalf("Description = %v, want ONLINE FUND TRF VIA CEFTS", got)
 	}
 }
 
@@ -248,6 +296,11 @@ func testHandler(t *testing.T, sheets *fakeSheetStore) *handler {
 		Senders: []string{`^NationsSMS$`},
 		Patterns: []MessagePatternConfig{
 			{
+				Name:      "pos_reversal",
+				Direction: "credit",
+				Pattern:   `^A TRANSACTION of LKR (?P<amount>[0-9,]+\.[0-9]{2}) was approved on your A/C No\. (?P<account>[0-9*]+) at (?P<description>POS Reversal Transaction - .+?)\. Current Bal LKR [0-9,]+\.[0-9]{2}\s*\.?$`,
+			},
+			{
 				Name:      "purchase",
 				Direction: "debit",
 				Pattern:   `^A TRANSACTION of LKR (?P<amount>[0-9,]+\.[0-9]{2}) was approved on your A/C No\. (?P<account>[0-9*]+) at (?P<description>.+?)\. Current Bal LKR [0-9,]+\.[0-9]{2}$`,
@@ -256,6 +309,11 @@ func testHandler(t *testing.T, sheets *fakeSheetStore) *handler {
 				Name:      "islips",
 				Direction: "credit",
 				Pattern:   `^\s*(?P<description>ISLIPS)\s+was performed on your Account No\. (?P<account>[0-9A-Za-zXx*]+) for LKR (?P<amount>[0-9,]+\.[0-9]{2}) CR\.?` + `$`,
+			},
+			{
+				Name:      "online_fund_trf_via_cefts",
+				Direction: "credit",
+				Pattern:   `^(?P<description>ONLINE FUND TRF VIA CEFTS) was performed on your Account No\. (?P<account>[0-9A-Za-zXx*]+) for LKR (?P<amount>[0-9,]+\.[0-9]{2}) CR\. Current Bal LKR [0-9,]+\.[0-9]{2}(?: Call .+)?$`,
 			},
 		},
 	}})
@@ -302,6 +360,44 @@ func testCreditRequest() events.APIGatewayV2HTTPRequest {
 		Body: `{
 			"sender":"NationsSMS",
 			"message":" ISLIPS  was performed on your Account No. 200XXXXX9580 for LKR 174825.38 CR.",
+			"received_at":"2026-02-04T12:34:56Z",
+			"device_id":"pixel-8"
+		}`,
+		Headers: map[string]string{
+			"x-auth-token": "secret",
+		},
+		RequestContext: events.APIGatewayV2HTTPRequestContext{
+			HTTP: events.APIGatewayV2HTTPRequestContextHTTPDescription{
+				Method: "POST",
+			},
+		},
+	}
+}
+
+func testCreditCeftsRequest() events.APIGatewayV2HTTPRequest {
+	return events.APIGatewayV2HTTPRequest{
+		Body: `{
+			"sender":"NationsSMS",
+			"message":"ONLINE FUND TRF VIA CEFTS was performed on your Account No. 2006xxxx9580 for LKR 20000.00 CR. Current Bal LKR 107514.98 Call 0114711411 for any inquiry.",
+			"received_at":"2026-02-04T12:34:56Z",
+			"device_id":"pixel-8"
+		}`,
+		Headers: map[string]string{
+			"x-auth-token": "secret",
+		},
+		RequestContext: events.APIGatewayV2HTTPRequestContext{
+			HTTP: events.APIGatewayV2HTTPRequestContextHTTPDescription{
+				Method: "POST",
+			},
+		},
+	}
+}
+
+func testPosReversalRequest() events.APIGatewayV2HTTPRequest {
+	return events.APIGatewayV2HTTPRequest{
+		Body: `{
+			"sender":"NationsSMS",
+			"message":"A TRANSACTION of LKR 298.15 was approved on your A/C No. 200680****580 at POS Reversal Transaction - UBER   _. Current Bal LKR 88770.27",
 			"received_at":"2026-02-04T12:34:56Z",
 			"device_id":"pixel-8"
 		}`,

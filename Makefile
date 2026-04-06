@@ -21,7 +21,8 @@ build:
 	GOOS=linux GOARCH=$(LAMBDA_ARCH) CGO_ENABLED=0 $(GO) build -o $(DIST_DIR)/bootstrap .
 
 package: build
-	$(PYTHON) -c 'import pathlib, zipfile; dist = pathlib.Path("$(DIST_DIR)"); archive = dist / "function.zip"; zf = zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED); zf.write(dist / "bootstrap", arcname="bootstrap"); zf.close(); print("wrote", archive)'
+	cp config.yml $(DIST_DIR)/config.yml
+	$(PYTHON) -c 'import pathlib, zipfile; dist = pathlib.Path("$(DIST_DIR)"); archive = dist / "function.zip"; zf = zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED); zf.write(dist / "bootstrap", arcname="bootstrap"); zf.write(dist / "config.yml", arcname="config.yml"); zf.close(); print("wrote", archive)'
 
 run-local:
 	@if [ ! -f .env ]; then \
