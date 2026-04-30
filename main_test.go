@@ -8,17 +8,16 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 )
 
 type fakeSheetStore struct {
 	appendErr    error
-	appendedRows [][]interface{}
+	appendedRows [][]any
 }
 
-func (f *fakeSheetStore) AppendRow(_, _ string, row []interface{}) error {
+func (f *fakeSheetStore) AppendRow(_ string, row []any) error {
 	if f.appendErr != nil {
 		return f.appendErr
 	}
@@ -29,7 +28,6 @@ func (f *fakeSheetStore) AppendRow(_, _ string, row []interface{}) error {
 func TestParsePayloadNormalizesAndConvertsTimezone(t *testing.T) {
 	t.Parallel()
 
-	loc := time.FixedZone("UTC+0530", 5*60*60+30*60)
 	req := events.APIGatewayV2HTTPRequest{
 		Body: `{
 			"sender":" NationsSMS ",
@@ -39,7 +37,7 @@ func TestParsePayloadNormalizesAndConvertsTimezone(t *testing.T) {
 		}`,
 	}
 
-	payload, err := parsePayload(req, loc)
+	payload, err := parsePayload(req)
 	if err != nil {
 		t.Fatalf("parsePayload() error = %v", err)
 	}
@@ -327,12 +325,10 @@ func testHandler(t *testing.T, sheets *fakeSheetStore) *handler {
 				SheetName: "Transactions",
 			},
 		},
-		bankMatchers:  bankMatchers,
-		sheets:        sheets,
-		spreadsheetID: "sheet-id",
-		authToken:     "secret",
-		location:      time.UTC,
-		logger:        newLogger("error"),
+		bankMatchers: bankMatchers,
+		sheets:       sheets,
+		authToken:    "secret",
+		logger:       newLogger("error"),
 	}
 }
 

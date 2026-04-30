@@ -2,7 +2,6 @@ package main
 
 import (
 	"regexp"
-	"time"
 )
 
 type SMSPayload struct {
@@ -24,13 +23,11 @@ type ParsedTransaction struct {
 }
 
 type handler struct {
-	config        Config
-	bankMatchers  []bankMatcher
-	sheets        sheetStore
-	spreadsheetID string
-	authToken     string
-	location      *time.Location
-	logger        appLogger
+	config       Config
+	bankMatchers []bankMatcher
+	sheets       sheetStore
+	authToken    string
+	logger       appLogger
 }
 
 type bankMatcher struct {
@@ -46,5 +43,12 @@ type messageMatcher struct {
 }
 
 type sheetStore interface {
-	AppendRow(spreadsheetID, sheetName string, row []any) error
+	AppendRow(sheetName string, row []any) error
+}
+
+type envVars struct {
+	spreadsheetURL    string
+	authToken         string
+	googleCredentials string
+	logLevel          string
 }

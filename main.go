@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -39,52 +38,26 @@ func newHandler() (*handler, error) {
 		return nil, err
 	}
 
-	spreadsheetID, err := spreadsheetID()
-	if err != nil {
-		return nil, fmt.Errorf("get spreadsheet ID: %w", err)
-	}
+	env := loadEnvVars()
 
 	bankMatchers, err := compileBankMatchers(cfg.Banks)
 	if err != nil {
 		return nil, fmt.Errorf("compile banks: %w", err)
 	}
 
-	authToken := strings.TrimSpace(os.Getenv("AUTH_TOKEN"))
-	if authToken == "" {
-		return nil, errors.New("AUTH_TOKEN env var is required")
-	}
-
-	credsJSON := strings.TrimSpace(os.Getenv("GOOGLE_CREDENTIALS_JSON"))
-	if credsJSON == "" {
-		return nil, errors.New("GOOGLE_CREDENTIALS_JSON env var is required")
-	}
-
-	srv, err := sheets.NewService(context.Background(),
-		option.WithCredentialsJSON([]byte(credsJSON)),
-		option.WithScopes(sheets.SpreadsheetsScope),
-	)
+	googleSheetStore, err := buildSheetStore(env.spreadsheetURL, env.googleCredentials)
 	if err != nil {
-		return nil, fmt.Errorf("init sheets service: %w", err)
+		return nil, fmt.Errorf("init sheet store: %w", err)
 	}
 
-	loc := time.UTC
-	if strings.TrimSpace(cfg.Timezone) != "" {
-		loc, err = time.LoadLocation(cfg.Timezone)
-		if err != nil {
-			return nil, fmt.Errorf("invalid timezone: %w", err)
-		}
-	}
-
-	logger := newLogger(os.Getenv("LOG_LEVEL"))
+	logger := newLogger(env.logLevel)
 
 	return &handler{
-		config:        cfg,
-		bankMatchers:  bankMatchers,
-		sheets:        googleSheetStore{service: srv},
-		spreadsheetID: spreadsheetID,
-		authToken:     authToken,
-		location:      loc,
-		logger:        logger,
+		config:       cfg,
+		bankMatchers: bankMatchers,
+		sheets:       googleSheetStore,
+		authToken:    env.authToken,
+		logger:       logger,
 	}, nil
 }
 
@@ -100,7 +73,7 @@ func (h *handler) handle(ctx context.Context, req events.APIGatewayV2HTTPRequest
 		return jsonResponse(http.StatusUnauthorized, "unauthorized"), nil
 	}
 
-	payload, err := parsePayload(req, h.location)
+	payload, err := parsePayload(req)
 	if err != nil {
 		h.logger.Warnf("invalid payload: %v", err)
 		return jsonResponse(http.StatusBadRequest, err.Error()), nil
@@ -150,7 +123,7 @@ func (h *handler) appendToSheet(_ context.Context, tx ParsedTransaction) error {
 		tx.BankName,
 	}
 
-	err := h.sheets.AppendRow(h.spreadsheetID, h.config.Spreadsheet.SheetName, row)
+	err := h.sheets.AppendRow(h.config.Spreadsheet.SheetName, row)
 	if err != nil {
 		return fmt.Errorf("append to sheet: %w", err)
 	}
@@ -191,4 +164,35 @@ func maskedHeaders(headers map[string]string) map[string]string {
 		masked[key] = value
 	}
 	return masked
+}
+
+func loadEnvVars() envVars {
+	spreadsheetURL := strings.TrimSpace(os.Getenv("SPREADSHEET_URL"))
+	authToken := strings.TrimSpace(os.Getenv("AUTH_TOKEN"))
+	googleCredentials := strings.TrimSpace(os.Getenv("GOOGLE_CREDENTIALS_JSON"))
+	lgogLevel := strings.TrimSpace(os.Getenv("LOG_LEVEL"))
+
+	return envVars{
+		spreadsheetURL:    spreadsheetURL,
+		authToken:         authToken,
+		googleCredentials: googleCredentials,
+		logLevel:          lgogLevel,
+	}
+}
+
+func buildSheetStore(url string, crecredentials string) (sheetStore, error) {
+	spreadsheetID, err := spreadsheetIDFromURL(url)
+	if err != nil {
+		return nil, fmt.Errorf("get spreadsheet ID: %w", err)
+	}
+
+	srv, err := sheets.NewService(context.Background(),
+		option.WithCredentialsJSON([]byte(crecredentials)),
+		option.WithScopes(sheets.SpreadsheetsScope),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("init sheets service: %w", err)
+	}
+
+	return googleSheetStore{service: srv, spreadsheetID: spreadsheetID}, nil
 }

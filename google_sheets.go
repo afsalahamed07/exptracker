@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"os"
 	"regexp"
 	"strings"
 
@@ -10,31 +9,20 @@ import (
 )
 
 type googleSheetStore struct {
-	service *sheets.Service
+	service       *sheets.Service
+	spreadsheetID string
 }
 
 var spreadsheetURLPattern = regexp.MustCompile(`/spreadsheets/d/([^/?#]+)`)
 
-func (s googleSheetStore) AppendRow(spreadsheetID, sheetName string, row []any) error {
+func (s googleSheetStore) AppendRow(sheetName string, row []any) error {
 	values := &sheets.ValueRange{Values: [][]any{row}}
 
-	_, err := s.service.Spreadsheets.Values.Append(spreadsheetID, sheetName, values).
+	_, err := s.service.Spreadsheets.Values.Append(s.spreadsheetID, sheetName, values).
 		ValueInputOption("RAW").
 		InsertDataOption("INSERT_ROWS").
 		Do()
 	return err
-}
-
-// TODO: This is a bit of a hack to avoid having to parse the spreadsheet URL in the main function.
-// We can probably do this better by having a separate function that takes care of parsing the URL and returning the spreadsheet ID.
-// NOTE: Also thinking in terms of spreadsheetID is coupled to google sheets
-func spreadsheetID() (string, error) {
-	spreadsheetURL := strings.TrimSpace(os.Getenv("SPREADSHEET_URL"))
-	if spreadsheetURL == "" {
-		return "", errors.New("no spreadsheet url provided. Please set the spreadsheet_url environment variable")
-	}
-
-	return spreadsheetIDFromURL(spreadsheetURL)
 }
 
 /**
@@ -44,6 +32,11 @@ func spreadsheetID() (string, error) {
 * i.e : https://docs.google.com/spreadsheets/d/id/edit?gid=0#gid=0
 * */
 func spreadsheetIDFromURL(url string) (string, error) {
+	url = strings.TrimSpace(url)
+	if url == "" {
+		return "", errors.New("no spreadsheet url provided. Please set the spreadsheet_url environment variable")
+	}
+
 	matches := spreadsheetURLPattern.FindStringSubmatch(url)
 	if len(matches) == 2 {
 		return matches[1], nil

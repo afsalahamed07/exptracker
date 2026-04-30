@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 )
 
-func parsePayload(req events.APIGatewayV2HTTPRequest, loc *time.Location) (SMSPayload, error) {
+func parsePayload(req events.APIGatewayV2HTTPRequest) (SMSPayload, error) {
 	if strings.TrimSpace(req.Body) == "" {
 		return SMSPayload{}, errors.New("empty body")
 	}
@@ -35,9 +35,7 @@ func parsePayload(req events.APIGatewayV2HTTPRequest, loc *time.Location) (SMSPa
 		return SMSPayload{}, errors.New("received_at must be RFC3339")
 	}
 
-	if loc != nil {
-		payload.ReceivedAt = parsedTime.In(loc).Format(time.RFC3339)
-	}
+	payload.ReceivedAt = parsedTime.Format(time.RFC3339)
 
 	return payload, nil
 }
