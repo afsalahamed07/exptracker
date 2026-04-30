@@ -10,9 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-var (
-	requiredMessagePatternGroups = []string{"amount", "account"}
-)
+var requiredMessagePatternGroups = []string{"amount", "account"}
 
 type Config struct {
 	Spreadsheet SpreadsheetConfig `yaml:"spreadsheet"`
@@ -21,8 +19,9 @@ type Config struct {
 }
 
 type SpreadsheetConfig struct {
-	URL       string `yaml:"url"`
-	SheetName string `yaml:"sheet_name"`
+	URL        string `yaml:"url"`
+	SheetName  string `yaml:"sheet_name"`
+	ErrorSheet string `yaml:"error_sheet,omitempty"`
 }
 
 type BankConfig struct {
@@ -48,18 +47,6 @@ func loadConfig(path string) (Config, error) {
 		return Config{}, fmt.Errorf("parse config.yml: %w", err)
 	}
 	return cfg, nil
-}
-
-func validateConfig(cfg Config) error {
-	if cfg.Spreadsheet.SheetName == "" {
-		return errors.New("spreadsheet.sheet_name is required in config.yml")
-	}
-
-	if len(cfg.Banks) == 0 {
-		return errors.New("banks must include at least one entry")
-	}
-
-	return nil
 }
 
 func compileBankMatchers(banks []BankConfig) ([]bankMatcher, error) {

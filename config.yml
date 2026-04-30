@@ -1,6 +1,7 @@
 spreadsheet:
   url: ""
   sheet_name: Transactions
+  error_sheet: Errors
 
 banks:
   - name: "NTB"

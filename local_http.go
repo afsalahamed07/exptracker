@@ -13,10 +13,14 @@ func runLocalHTTP(h *handler) error {
 	if port == "" {
 		port = "8080"
 	}
-
 	addr := ":" + port
+
 	h.logger.Infof("starting local HTTP server on http://localhost%s", addr)
-	return http.ListenAndServe(addr, http.HandlerFunc(h.serveHTTP))
+
+	return http.ListenAndServe(
+		addr,
+		http.HandlerFunc(h.serveHTTP),
+	)
 }
 
 func (h *handler) serveHTTP(w http.ResponseWriter, r *http.Request) {

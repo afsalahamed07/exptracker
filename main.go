@@ -39,8 +39,9 @@ func newHandler() (*handler, error) {
 		return nil, err
 	}
 
-	if err := validateConfig(cfg); err != nil {
-		return nil, err
+	spreadsheetID, err := spreadsheetID()
+	if err != nil {
+		return nil, fmt.Errorf("get spreadsheet ID: %w", err)
 	}
 
 	bankMatchers, err := compileBankMatchers(cfg.Banks)
@@ -51,19 +52,6 @@ func newHandler() (*handler, error) {
 	authToken := strings.TrimSpace(os.Getenv("AUTH_TOKEN"))
 	if authToken == "" {
 		return nil, errors.New("AUTH_TOKEN env var is required")
-	}
-
-	spreadsheetURL := strings.TrimSpace(os.Getenv("SPREADSHEET_URL"))
-	if spreadsheetURL == "" {
-		spreadsheetURL = strings.TrimSpace(cfg.Spreadsheet.URL)
-	}
-	if spreadsheetURL == "" {
-		return nil, errors.New("spreadsheet.url is required in config.yml or SPREADSHEET_URL env var")
-	}
-
-	spreadsheetID, err := spreadsheetIDFromURL(spreadsheetURL)
-	if err != nil {
-		return nil, err
 	}
 
 	credsJSON := strings.TrimSpace(os.Getenv("GOOGLE_CREDENTIALS_JSON"))
@@ -203,30 +191,4 @@ func maskedHeaders(headers map[string]string) map[string]string {
 		masked[key] = value
 	}
 	return masked
-}
-
-func spreadsheetIDFromURL(url string) (string, error) {
-	url = strings.TrimSpace(url)
-	if url == "" {
-		return "", errors.New("spreadsheet url is empty")
-	}
-
-	if strings.Contains(url, "/d/") {
-		parts := strings.Split(url, "/d/")
-		if len(parts) < 2 {
-			return "", errors.New("invalid spreadsheet url")
-		}
-		tail := parts[1]
-		id := strings.Split(tail, "/")[0]
-		if id == "" {
-			return "", errors.New("spreadsheet id not found in url")
-		}
-		return id, nil
-	}
-
-	if strings.HasPrefix(url, "http://") || strings.HasPrefix(url, "https://") {
-		return "", errors.New("spreadsheet url missing /d/ segment")
-	}
-
-	return url, nil
 }

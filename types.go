@@ -3,8 +3,6 @@ package main
 import (
 	"regexp"
 	"time"
-
-	"google.golang.org/api/sheets/v4"
 )
 
 type SMSPayload struct {
@@ -48,9 +46,5 @@ type messageMatcher struct {
 }
 
 type sheetStore interface {
-	AppendRow(spreadsheetID, sheetName string, row []interface{}) error
-}
-
-type googleSheetStore struct {
-	service *sheets.Service
+	AppendRow(spreadsheetID, sheetName string, row []any) error
 }
