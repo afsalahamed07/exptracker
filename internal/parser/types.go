@@ -1,8 +1,6 @@
-package main
+package parser
 
-import (
-	"regexp"
-)
+import "regexp"
 
 type SMSPayload struct {
 	Sender     string `json:"sender"`
@@ -22,33 +20,18 @@ type ParsedTransaction struct {
 	BankName    string
 }
 
-type handler struct {
-	config       Config
-	bankMatchers []bankMatcher
-	sheets       sheetStore
-	authToken    string
-	logger       appLogger
-}
-
-type bankMatcher struct {
+type BankMatcher struct {
 	name        string
 	senderRegex []*regexp.Regexp
 	messages    []messageMatcher
+}
+
+func (m BankMatcher) Name() string {
+	return m.name
 }
 
 type messageMatcher struct {
 	name      string
 	direction string
 	regex     *regexp.Regexp
-}
-
-type sheetStore interface {
-	AppendRow(sheetName string, row []any) error
-}
-
-type envVars struct {
-	spreadsheetURL    string
-	authToken         string
-	googleCredentials string
-	logLevel          string
 }

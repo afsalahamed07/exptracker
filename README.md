@@ -46,8 +46,6 @@ banks:
       - name: "islips"
         direction: "credit"
         pattern: "^ISLIPS ...$"
-
-timezone: "UTC"
 ```
 
 Each bank entry contains:

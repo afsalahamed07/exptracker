@@ -18,7 +18,7 @@ check: vet test
 
 build:
 	mkdir -p $(DIST_DIR)
-	GOOS=linux GOARCH=$(LAMBDA_ARCH) CGO_ENABLED=0 $(GO) build -o $(DIST_DIR)/bootstrap .
+	GOOS=linux GOARCH=$(LAMBDA_ARCH) CGO_ENABLED=0 $(GO) build -o $(DIST_DIR)/bootstrap ./cmd/sms-ingest
 
 package: build
 	cp config.yml $(DIST_DIR)/config.yml
@@ -29,4 +29,4 @@ run-local:
 		echo ".env not found. Copy .env.example to .env first."; \
 		exit 1; \
 	fi
-	set -a && . ./.env && set +a && LOCAL_HTTP=1 PORT=$${PORT:-8080} $(GO) run .
+	set -a && . ./.env && set +a && LOCAL_HTTP=1 PORT=$${PORT:-8080} $(GO) run ./cmd/sms-ingest

@@ -1,56 +1,19 @@
-package main
+// Package parser provides functionality to compile bank matchers from configuration and validate message patterns.
+package parser
 
 import (
 	"errors"
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"sms-ingest/internal/config"
 )
 
 var requiredMessagePatternGroups = []string{"amount", "account"}
 
-type Config struct {
-	Spreadsheet SpreadsheetConfig `yaml:"spreadsheet"`
-	Banks       []BankConfig      `yaml:"banks"`
-	Timezone    string            `yaml:"timezone"`
-}
-
-type SpreadsheetConfig struct {
-	URL        string `yaml:"url"`
-	SheetName  string `yaml:"sheet_name"`
-	ErrorSheet string `yaml:"error_sheet,omitempty"`
-}
-
-type BankConfig struct {
-	Name     string                 `yaml:"name"`
-	Senders  []string               `yaml:"senders"`
-	Patterns []MessagePatternConfig `yaml:"patterns"`
-}
-
-type MessagePatternConfig struct {
-	Name      string `yaml:"name"`
-	Direction string `yaml:"direction"`
-	Pattern   string `yaml:"pattern"`
-}
-
-func loadConfig(path string) (Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return Config{}, fmt.Errorf("read config.yml: %w", err)
-	}
-
-	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return Config{}, fmt.Errorf("parse config.yml: %w", err)
-	}
-	return cfg, nil
-}
-
-func compileBankMatchers(banks []BankConfig) ([]bankMatcher, error) {
-	matchers := make([]bankMatcher, 0, len(banks))
+func CompileBankMatchers(banks []config.BankConfig) ([]BankMatcher, error) {
+	matchers := make([]BankMatcher, 0, len(banks))
 	for _, bank := range banks {
 		name := strings.TrimSpace(bank.Name)
 		if name == "" {
@@ -109,7 +72,7 @@ func compileBankMatchers(banks []BankConfig) ([]bankMatcher, error) {
 			})
 		}
 
-		matchers = append(matchers, bankMatcher{
+		matchers = append(matchers, BankMatcher{
 			name:        name,
 			senderRegex: senderMatchers,
 			messages:    messageMatchers,

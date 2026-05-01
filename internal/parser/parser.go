@@ -1,4 +1,4 @@
-package main
+package parser
 
 import (
 	"encoding/json"
@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 )
 
-func parsePayload(req events.APIGatewayV2HTTPRequest) (SMSPayload, error) {
+func ParsePayload(req events.APIGatewayV2HTTPRequest) (SMSPayload, error) {
 	if strings.TrimSpace(req.Body) == "" {
 		return SMSPayload{}, errors.New("empty body")
 	}
@@ -40,33 +40,33 @@ func parsePayload(req events.APIGatewayV2HTTPRequest) (SMSPayload, error) {
 	return payload, nil
 }
 
-func (h *handler) matcherForSender(sender string) (bankMatcher, error) {
+func MatcherForSender(matchers []BankMatcher, sender string) (BankMatcher, error) {
 	sender = strings.TrimSpace(sender)
 	if sender == "" {
-		return bankMatcher{}, errors.New("sender not allowed")
+		return BankMatcher{}, errors.New("sender not allowed")
 	}
 
-	var matched *bankMatcher
-	for i := range h.bankMatchers {
-		matcher := &h.bankMatchers[i]
+	var matched *BankMatcher
+	for i := range matchers {
+		matcher := &matchers[i]
 		for _, senderRegex := range matcher.senderRegex {
 			if !senderRegex.MatchString(sender) {
 				continue
 			}
 			if matched != nil {
-				return bankMatcher{}, fmt.Errorf("sender %q matched multiple bank configurations", sender)
+				return BankMatcher{}, fmt.Errorf("sender %q matched multiple bank configurations", sender)
 			}
 			matched = matcher
 			break
 		}
 	}
 	if matched == nil {
-		return bankMatcher{}, errors.New("sender not allowed")
+		return BankMatcher{}, errors.New("sender not allowed")
 	}
 	return *matched, nil
 }
 
-func (h *handler) parseSMS(payload SMSPayload, matcher bankMatcher) (ParsedTransaction, error) {
+func ParseSMS(payload SMSPayload, matcher BankMatcher) (ParsedTransaction, error) {
 	for _, message := range matcher.messages {
 		match := message.regex.FindStringSubmatch(payload.Message)
 		if len(match) == 0 {

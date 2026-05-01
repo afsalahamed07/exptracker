@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"io"
@@ -8,7 +8,7 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 )
 
-func runLocalHTTP(h *handler) error {
+func RunLocalHTTP(h *Handler) error {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -23,7 +23,7 @@ func runLocalHTTP(h *handler) error {
 	)
 }
 
-func (h *handler) serveHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		h.logger.Errorf("failed to read local request body: %v", err)
@@ -41,7 +41,7 @@ func (h *handler) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	resp, err := h.handle(r.Context(), req)
+	resp, err := h.Handle(r.Context(), req)
 	if err != nil {
 		h.logger.Errorf("handler returned error in local HTTP mode: %v", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)

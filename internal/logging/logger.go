@@ -1,4 +1,4 @@
-package main
+package logging
 
 import (
 	"fmt"
@@ -7,28 +7,28 @@ import (
 	"strings"
 )
 
-type logLevel int
+type Level int
 
 const (
-	debugLevel logLevel = iota
+	debugLevel Level = iota
 	infoLevel
 	warnLevel
 	errorLevel
 )
 
-type appLogger struct {
-	level logLevel
+type Logger struct {
+	level Level
 	base  *log.Logger
 }
 
-func newLogger(value string) appLogger {
-	return appLogger{
-		level: parseLogLevel(value),
+func New(value string) Logger {
+	return Logger{
+		level: parseLevel(value),
 		base:  log.New(os.Stdout, "", log.LstdFlags),
 	}
 }
 
-func parseLogLevel(value string) logLevel {
+func parseLevel(value string) Level {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "debug":
 		return debugLevel
@@ -41,23 +41,23 @@ func parseLogLevel(value string) logLevel {
 	}
 }
 
-func (l appLogger) Debugf(format string, args ...interface{}) {
+func (l Logger) Debugf(format string, args ...any) {
 	l.logf(debugLevel, "DEBUG", format, args...)
 }
 
-func (l appLogger) Infof(format string, args ...interface{}) {
+func (l Logger) Infof(format string, args ...any) {
 	l.logf(infoLevel, "INFO", format, args...)
 }
 
-func (l appLogger) Warnf(format string, args ...interface{}) {
+func (l Logger) Warnf(format string, args ...any) {
 	l.logf(warnLevel, "WARN", format, args...)
 }
 
-func (l appLogger) Errorf(format string, args ...interface{}) {
+func (l Logger) Errorf(format string, args ...any) {
 	l.logf(errorLevel, "ERROR", format, args...)
 }
 
-func (l appLogger) logf(level logLevel, label, format string, args ...interface{}) {
+func (l Logger) logf(level Level, label, format string, args ...any) {
 	if level < l.level {
 		return
 	}

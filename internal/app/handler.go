@@ -1,4 +1,4 @@
-package main
+package app
 
 import (
 	"context"
@@ -11,48 +11,34 @@ import (
 	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/aws/aws-lambda-go/lambda"
-	"google.golang.org/api/option"
-	"google.golang.org/api/sheets/v4"
+
+	"sms-ingest/internal/config"
+	"sms-ingest/internal/logging"
+	"sms-ingest/internal/parser"
+	"sms-ingest/internal/sheets"
 )
 
-func main() {
-	h, err := newHandler()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	if os.Getenv("LOCAL_HTTP") == "1" {
-		if err := runLocalHTTP(h); err != nil {
-			h.logger.Errorf("local HTTP server stopped: %v", err)
-			os.Exit(1)
-		}
-		return
-	}
-	lambda.Start(h.handle)
-}
-
-func newHandler() (*handler, error) {
-	cfg, err := loadConfig("config.yml")
+func NewHandler() (*Handler, error) {
+	cfg, err := config.Load("config.yml")
 	if err != nil {
 		return nil, err
 	}
 
 	env := loadEnvVars()
 
-	bankMatchers, err := compileBankMatchers(cfg.Banks)
+	bankMatchers, err := parser.CompileBankMatchers(cfg.Banks)
 	if err != nil {
 		return nil, fmt.Errorf("compile banks: %w", err)
 	}
 
-	googleSheetStore, err := buildSheetStore(env.spreadsheetURL, env.googleCredentials)
+	googleSheetStore, err := sheets.NewStore(env.spreadsheetURL, env.googleCredentials)
 	if err != nil {
 		return nil, fmt.Errorf("init sheet store: %w", err)
 	}
 
-	logger := newLogger(env.logLevel)
+	logger := logging.New(env.logLevel)
 
-	return &handler{
+	return &Handler{
 		config:       cfg,
 		bankMatchers: bankMatchers,
 		sheets:       googleSheetStore,
@@ -61,7 +47,7 @@ func newHandler() (*handler, error) {
 	}, nil
 }
 
-func (h *handler) handle(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+func (h *Handler) Handle(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 	h.logger.Debugf("received request: method=%s headers=%v body=%s", req.RequestContext.HTTP.Method, maskedHeaders(req.Headers), req.Body)
 	if req.RequestContext.HTTP.Method != http.MethodPost {
 		h.logger.Warnf("request rejected: method=%s", req.RequestContext.HTTP.Method)
@@ -73,21 +59,21 @@ func (h *handler) handle(ctx context.Context, req events.APIGatewayV2HTTPRequest
 		return jsonResponse(http.StatusUnauthorized, "unauthorized"), nil
 	}
 
-	payload, err := parsePayload(req)
+	payload, err := parser.ParsePayload(req)
 	if err != nil {
 		h.logger.Warnf("invalid payload: %v", err)
 		return jsonResponse(http.StatusBadRequest, err.Error()), nil
 	}
 
-	matcher, err := h.matcherForSender(payload.Sender)
+	matcher, err := parser.MatcherForSender(h.bankMatchers, payload.Sender)
 	if err != nil {
 		h.logger.Warnf("sender rejected: sender=%q err=%v", payload.Sender, err)
 		return jsonResponse(http.StatusForbidden, "sender not allowed"), nil
 	}
 
-	parsed, err := h.parseSMS(payload, matcher)
+	parsed, err := parser.ParseSMS(payload, matcher)
 	if err != nil {
-		h.logger.Warnf("sms parse failed: sender=%q bank=%q err=%v", payload.Sender, matcher.name, err)
+		h.logger.Warnf("sms parse failed: sender=%q bank=%q err=%v", payload.Sender, matcher.Name(), err)
 		return jsonResponse(http.StatusBadRequest, err.Error()), nil
 	}
 
@@ -100,7 +86,7 @@ func (h *handler) handle(ctx context.Context, req events.APIGatewayV2HTTPRequest
 	return jsonResponse(http.StatusOK, "ok"), nil
 }
 
-func (h *handler) validateAuth(headers map[string]string) error {
+func (h *Handler) validateAuth(headers map[string]string) error {
 	token := headerValue(headers, "x-auth-token")
 	if token == "" {
 		return errors.New("missing auth token")
@@ -111,8 +97,8 @@ func (h *handler) validateAuth(headers map[string]string) error {
 	return nil
 }
 
-func (h *handler) appendToSheet(_ context.Context, tx ParsedTransaction) error {
-	row := []interface{}{
+func (h *Handler) appendToSheet(_ context.Context, tx parser.ParsedTransaction) error {
+	row := []any{
 		tx.ReceivedAt,
 		tx.Amount,
 		tx.Direction,
@@ -170,29 +156,12 @@ func loadEnvVars() envVars {
 	spreadsheetURL := strings.TrimSpace(os.Getenv("SPREADSHEET_URL"))
 	authToken := strings.TrimSpace(os.Getenv("AUTH_TOKEN"))
 	googleCredentials := strings.TrimSpace(os.Getenv("GOOGLE_CREDENTIALS_JSON"))
-	lgogLevel := strings.TrimSpace(os.Getenv("LOG_LEVEL"))
+	logLevel := strings.TrimSpace(os.Getenv("LOG_LEVEL"))
 
 	return envVars{
 		spreadsheetURL:    spreadsheetURL,
 		authToken:         authToken,
 		googleCredentials: googleCredentials,
-		logLevel:          lgogLevel,
+		logLevel:          logLevel,
 	}
-}
-
-func buildSheetStore(url string, crecredentials string) (sheetStore, error) {
-	spreadsheetID, err := spreadsheetIDFromURL(url)
-	if err != nil {
-		return nil, fmt.Errorf("get spreadsheet ID: %w", err)
-	}
-
-	srv, err := sheets.NewService(context.Background(),
-		option.WithCredentialsJSON([]byte(crecredentials)),
-		option.WithScopes(sheets.SpreadsheetsScope),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("init sheets service: %w", err)
-	}
-
-	return googleSheetStore{service: srv, spreadsheetID: spreadsheetID}, nil
 }
