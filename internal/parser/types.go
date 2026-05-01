@@ -20,6 +20,22 @@ type ParsedTransaction struct {
 	BankName    string
 }
 
+type Direction string
+
+const (
+	DirectionCredit Direction = "credit"
+	DirectionDebit  Direction = "debit"
+)
+
+func (d Direction) Valid() bool {
+	switch d {
+	case DirectionCredit, DirectionDebit:
+		return true
+	default:
+		return false
+	}
+}
+
 type BankMatcher struct {
 	name        string
 	senderRegex []*regexp.Regexp
@@ -32,6 +48,6 @@ func (m BankMatcher) Name() string {
 
 type messageMatcher struct {
 	name      string
-	direction string
+	direction Direction
 	regex     *regexp.Regexp
 }

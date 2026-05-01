@@ -17,7 +17,7 @@ func CompileBankMatchers(banks []config.BankConfig) ([]BankMatcher, error) {
 	for _, bank := range banks {
 		compiled, err := complieBankMathcer(bank)
 		if err != nil {
-			continue
+			return nil, err
 		}
 		matchers = append(matchers, compiled)
 	}
@@ -56,9 +56,8 @@ func extractMessageMatchers(messagePatterns []config.MessagePatternConfig, name 
 			return nil, fmt.Errorf("bank %q has a message pattern with empty name", name)
 		}
 
-		direction := strings.ToLower(strings.TrimSpace(pattern.Direction))
-		// TODO: This is shitty fuck. have to change using something like enum
-		if direction != "credit" && direction != "debit" {
+		direction := Direction(strings.ToLower(strings.TrimSpace(pattern.Direction)))
+		if !direction.Valid() {
 			return nil, fmt.Errorf("bank %q pattern %q must use direction credit or debit", name, patternName)
 		}
 

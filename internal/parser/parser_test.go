@@ -74,6 +74,47 @@ func TestCompileBankMatchersAcceptsDescriptionGroup(t *testing.T) {
 	}
 }
 
+func TestCompileBankMatchersAcceptsValidDirections(t *testing.T) {
+	t.Parallel()
+
+	for _, direction := range []string{"credit", "debit"} {
+		direction := direction
+		t.Run(direction, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := CompileBankMatchers([]config.BankConfig{{
+				Name:    "nations",
+				Senders: []string{`^NationsSMS$`},
+				Patterns: []config.MessagePatternConfig{{
+					Name:      "transaction",
+					Direction: direction,
+					Pattern:   `^A TRANSACTION of LKR (?P<amount>[0-9,]+\.[0-9]{2}) was approved on your A/C No\. (?P<account>[0-9*]+) at (?P<description>.+?)\. Current Bal LKR [0-9,]+\.[0-9]{2}$`,
+				}},
+			}})
+			if err != nil {
+				t.Fatalf("CompileBankMatchers() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestCompileBankMatchersRejectsInvalidDirection(t *testing.T) {
+	t.Parallel()
+
+	_, err := CompileBankMatchers([]config.BankConfig{{
+		Name:    "nations",
+		Senders: []string{`^NationsSMS$`},
+		Patterns: []config.MessagePatternConfig{{
+			Name:      "transaction",
+			Direction: "transfer",
+			Pattern:   `^A TRANSACTION of LKR (?P<amount>[0-9,]+\.[0-9]{2}) was approved on your A/C No\. (?P<account>[0-9*]+) at (?P<description>.+?)\. Current Bal LKR [0-9,]+\.[0-9]{2}$`,
+		}},
+	}})
+	if err == nil {
+		t.Fatal("CompileBankMatchers() error = nil, want invalid-direction error")
+	}
+}
+
 func TestValidateMessagePatternRequiresDescriptionOrMerchantGroup(t *testing.T) {
 	t.Parallel()
 

@@ -100,7 +100,7 @@ func ParseSMS(payload SMSPayload, matcher BankMatcher) (ParsedTransaction, error
 			Description: description,
 			AccountMask: accountMask,
 			Amount:      amount,
-			Direction:   message.direction,
+			Direction:   string(message.direction),
 			BankName:    matcher.name,
 		}, nil
 	}
