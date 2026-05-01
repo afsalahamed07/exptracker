@@ -49,14 +49,10 @@ func NewHandler() (*Handler, error) {
 
 func (h *Handler) Handle(ctx context.Context, req events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 	h.logger.Debugf("received request: method=%s headers=%v body=%s", req.RequestContext.HTTP.Method, maskedHeaders(req.Headers), req.Body)
-	if req.RequestContext.HTTP.Method != http.MethodPost {
-		h.logger.Warnf("request rejected: method=%s", req.RequestContext.HTTP.Method)
-		return jsonResponse(http.StatusMethodNotAllowed, "method not allowed"), nil
-	}
 
-	if err := h.validateAuth(req.Headers); err != nil {
-		h.logger.Warnf("request unauthorized: %v", err)
-		return jsonResponse(http.StatusUnauthorized, "unauthorized"), nil
+	err := h.validateHTTPRequest(req)
+	if err != nil {
+		return jsonResponse(http.StatusBadRequest, err.Error()), nil
 	}
 
 	payload, err := parser.ParsePayload(req)
@@ -164,4 +160,12 @@ func loadEnvVars() envVars {
 		googleCredentials: googleCredentials,
 		logLevel:          logLevel,
 	}
+}
+
+func (h *Handler) validateHTTPRequest(req events.APIGatewayV2HTTPRequest) error {
+	if req.RequestContext.HTTP.Method != http.MethodPost {
+		return errors.New("method not allowed")
+	}
+
+	return h.validateAuth(req.Headers)
 }
