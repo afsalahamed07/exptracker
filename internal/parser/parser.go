@@ -45,25 +45,21 @@ func MatcherForSender(matchers []BankMatcher, sender string) (BankMatcher, error
 	if sender == "" {
 		return BankMatcher{}, errors.New("sender not allowed")
 	}
-
-	var matched *BankMatcher
-	for i := range matchers {
-		matcher := &matchers[i]
-		for _, senderRegex := range matcher.senderRegex {
-			if !senderRegex.MatchString(sender) {
-				continue
-			}
-			if matched != nil {
-				return BankMatcher{}, fmt.Errorf("sender %q matched multiple bank configurations", sender)
-			}
-			matched = matcher
-			break
+	for _, matcher := range matchers {
+		if matcher.matchesSender(sender) {
+			return matcher, nil
 		}
 	}
-	if matched == nil {
-		return BankMatcher{}, errors.New("sender not allowed")
+	return BankMatcher{}, fmt.Errorf("no matcher found for sender %q", sender)
+}
+
+func (m BankMatcher) matchesSender(sender string) bool {
+	for _, senderRegex := range m.senderRegex {
+		if senderRegex.MatchString(sender) {
+			return true
+		}
 	}
-	return *matched, nil
+	return false
 }
 
 func ParseSMS(payload SMSPayload, matcher BankMatcher) (ParsedTransaction, error) {
